@@ -1,6 +1,9 @@
 
 
 class Config:
+    # seed
+    SEED = 42
+    
     # Названия моделей
     TEXT_MODEL_NAME = "bert-base-uncased"
     IMAGE_MODEL_NAME = "tf_efficientnet_b0"
@@ -13,11 +16,13 @@ class Config:
     BATCH_SIZE = 4
     TEXT_LR = 3e-5
     IMAGE_LR = 1e-4
-    CLASSIFIER_LR = 5e-4
+    NUM_LR = 1e-3
+    REGRESSOR_LR = 5e-4
     EPOCHS = 30
     PATIENCE = 3 # кол-во эпох без улучшений для ранней остановки
     DROPOUT = 0.15
     HIDDEN_DIM = 256
+    NUM_DIM = 32
 
     # Пути 
     SAVE_PATH = "best_model.pth"
