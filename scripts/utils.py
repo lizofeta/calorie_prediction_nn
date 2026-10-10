@@ -8,6 +8,7 @@ import random
 import os
 import copy
 import numpy as np
+from tqdm.auto import tqdm
 
 from .dataset import preprocess, prepare_dataloader
 
@@ -93,7 +94,7 @@ def validate(model, val_loader, metric, criterion, device):
             pred = model(**inputs)
             loss = criterion(pred, label)
             val_loss += loss.item()
-            _ = metric(preds=pred, target=label)
+            metric.update(preds=pred, target=label)
     val_mae = metric.compute().item()
     val_loss /= len(val_loader)
     metric.reset()
@@ -101,7 +102,7 @@ def validate(model, val_loader, metric, criterion, device):
             
 
 
-def train(conf, device):
+def train_model(conf, device):
     set_seed(conf.SEED)
     
     train, val = preprocess(conf, df_type="train")
@@ -128,8 +129,8 @@ def train(conf, device):
     val_dl = prepare_dataloader(conf, val, tokenizer, df_type="val")
 
     # Метрика
-    mae_train = torchmetrics.MeanAbsoluteError()
-    mae_val = torchmetrics.MeanAbsoluteError()
+    mae_train = torchmetrics.MeanAbsoluteError().to(device)
+    mae_val = torchmetrics.MeanAbsoluteError().to(device)
 
     best_val_mae = float('inf')
     epochs_without_improvement = 0
@@ -141,7 +142,7 @@ def train(conf, device):
         model.train()
         epoch_loss = 0.0
 
-        for batch in train_dl:
+        for batch in tqdm(train_dl):
             inputs = {
                 "text_input": batch["input_ids"].to(device),
                 "attention_mask": batch["attention_mask"].to(device),
@@ -158,7 +159,7 @@ def train(conf, device):
             optimizer.step()
 
             epoch_loss += loss.item()
-            _ = mae_train(preds=pred, target=label)
+            mae_train.update(preds=pred, target=label)
 
         avg_epoch_loss = epoch_loss / len(train_dl)
         epoch_mae = mae_train.compute().item()
@@ -189,7 +190,44 @@ def train(conf, device):
     model.load_state_dict(best_model_state)
     torch.save(model.state_dict(), conf.SAVE_PATH)
 
-    return train_history
+    return train_history, model
             
             
+def test_model(conf, model, device):
+    test_df = preprocess(conf, df_type="test")
+    tokenizer = AutoTokenizer.from_pretrained(conf.TEXT_MODEL_NAME)
+    test_dl = prepare_dataloader(conf, test_df, tokenizer, df_type="test")
     
+    # Метрика
+    metric = torchmetrics.MeanAbsoluteError().to(device)
+
+    # реальные метки и предсказания
+    y_true = []
+    y_preds = []
+
+    model.eval()
+    with torch.no_grad():
+        for batch in test_dl:
+            inputs = {
+                "text_input": batch["input_ids"].to(device),
+                "attention_mask": batch["attention_mask"].to(device),
+                "image_input": batch["image"].to(device),
+                "num_input": batch["num_feat"].to(device)
+            }
+            label = batch["label"].to(device)
+            pred = model(**inputs)
+            metric.update(preds=pred, target=label)
+            y_true.extend(label.cpu().numpy().reshape(-1))
+            y_preds.extend(pred.cpu().numpy().reshape(-1))
+            
+    test_mae = metric.compute().item()
+        
+    y_true = np.array(y_true)
+    y_preds = np.array(y_preds)
+    results_df = test_df.reset_index(drop=True).copy()
+    results_df["y_true"] = y_true
+    results_df["y_preds"] = y_preds
+    results_df["error"] = np.abs(y_true - y_preds)
+    
+    metric.reset()
+    return test_mae, results_df
