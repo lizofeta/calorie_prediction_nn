@@ -22,11 +22,11 @@ class MultimodalDataset(Dataset):
         return len(self.df)
 
     def __getitem__(self, idx):
-        text = self.df.loc[idx, "ingredients"]
-        label = self.df.loc[idx, "total_calories"]
-        num_feature = self.df.loc[idx, "total_mass"]
+        text = self.df.iloc[idx]["ingredients"]
+        label = self.df.iloc[idx]["total_calories"]
+        num_feature = self.df.iloc[idx]["total_mass"]
         
-        dish_id = self.df.loc[idx, "dish_id"]
+        dish_id = self.df.iloc[idx]["dish_id"]
         img_path = f"{self.conf.IMAGE_ROOT}/{dish_id}/{self.conf.IMAGE_NAME}"
         img = Image.open(img_path).convert("RGB")
         img = self.transforms(image=np.array(img))["image"]
@@ -81,6 +81,8 @@ def preprocess(conf, df_type="train"):
     df_train = df_dish[df_dish["split"] == "train"].drop(columns="split").reset_index(drop=True)
     
     train, val = train_test_split(df_train, test_size=0.2, shuffle=True, random_state=conf.SEED)
+    train = train.reset_index(drop=True)
+    val = val.reset_index(drop=True)
 
     scaler = StandardScaler()
 
